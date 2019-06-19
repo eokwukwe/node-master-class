@@ -11,7 +11,7 @@ handlers.hello = (data, callback) => {
   const { address } = os.networkInterfaces().lo0[0];
   const platform = os.platform();
   sysArch = os.arch();
-  callback(201, {
+  callback(200, {
     message: `Hello ${username}`,
     'System information': {
       hostname,
