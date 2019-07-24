@@ -38,7 +38,7 @@ httpsServer.listen(config.httpsPort, () => {
 });
 
 // All the server logic for http and https server
-const unifiedServer = (req, res) =>{
+const unifiedServer = (req, res) => {
   // Get URL and parse it
   const parsedUrl = url.parse(req.url, true);
 
@@ -59,7 +59,7 @@ const unifiedServer = (req, res) =>{
   const decoder = new StringDecoder('utf8');
   let buffer = '';
   req
-    .on('data', data => {
+    .on('data', (data) => {
       buffer += decoder.write(data);
     })
     .on('end', () => {
@@ -71,7 +71,7 @@ const unifiedServer = (req, res) =>{
         typeof router[trimmedPath] !== 'undefined'
           ? router[trimmedPath]
           : handlers.notFound;
-      
+
       // Construct the data object to send to the handler
       const data = {
         method: method,
@@ -107,5 +107,6 @@ const unifiedServer = (req, res) =>{
 const router = {
   ping: handlers.ping,
   users: handlers.users,
-  tokens: handlers.tokens
+  tokens: handlers.tokens,
+  checks: handlers.checks
 };

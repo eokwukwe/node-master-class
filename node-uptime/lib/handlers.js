@@ -3,6 +3,7 @@
  */
 const _data = require('./data');
 const helpers = require('./helpers');
+const config = require('./config');
 
 // Define the handlers
 const handlers = {};
@@ -23,31 +24,31 @@ handlers._users = {};
 // Users - post
 // Required data: firstName, lastName, phone, password, tosAgreement
 // Optional data: none
-handlers._users.post = (data, callback) => {
+handlers._users.post = (sentData, callback) => {
   // Check that all required fields are filled out
   const firstName =
-    typeof data.payload.firstName === 'string' &&
-    data.payload.firstName.trim().length > 0
-      ? data.payload.firstName.trim()
+    typeof sentData.payload.firstName === 'string' &&
+    sentData.payload.firstName.trim().length > 0
+      ? sentData.payload.firstName.trim()
       : false;
   const lastName =
-    typeof data.payload.lastName === 'string' &&
-    data.payload.lastName.trim().length > 0
-      ? data.payload.lastName.trim()
+    typeof sentData.payload.lastName === 'string' &&
+    sentData.payload.lastName.trim().length > 0
+      ? sentData.payload.lastName.trim()
       : false;
   const phone =
-    typeof data.payload.phone === 'string' &&
-    data.payload.phone.trim().length === 10
-      ? data.payload.phone.trim()
+    typeof sentData.payload.phone === 'string' &&
+    sentData.payload.phone.trim().length === 10
+      ? sentData.payload.phone.trim()
       : false;
   const password =
-    typeof data.payload.password === 'string' &&
-    data.payload.password.trim().length > 0
-      ? data.payload.password.trim()
+    typeof sentData.payload.password === 'string' &&
+    sentData.payload.password.trim().length > 0
+      ? sentData.payload.password.trim()
       : false;
   const tosAgreement =
-    typeof data.payload.tosAgreement === 'boolean' &&
-    data.payload.tosAgreement === true
+    typeof sentData.payload.tosAgreement === 'boolean' &&
+    sentData.payload.tosAgreement === true
       ? true
       : false;
 
@@ -228,7 +229,6 @@ handlers._users.put = (sentData, callback) => {
 // Users - delete
 // Required data: phone
 // Optional field: none
-// @TODO Cleanup (delete) any other files associated with the user
 handlers._users.delete = (sentData, callback) => {
   // Check that the phone number provided is valid
   const phone =
@@ -250,9 +250,38 @@ handlers._users.delete = (sentData, callback) => {
           if (!err && userData) {
             _data.delete('users', phone, (err) => {
               if (!err) {
-                callback(200);
+                // Delete checks associated with the user
+                const userChecks =
+                  typeof userData.checks === 'object' &&
+                  userData.checks instanceof Array
+                    ? userData.checks
+                    : [];
+                const checksToDelete = userChecks.length;
+
+                if (checksToDelete > 0) {
+                  let deletedChecks = 0;
+                  let deletionErrors = false;
+
+                  userChecks.forEach((checkId) => {
+                    _data.delete('checks', checkId, (err) => {
+                      if (err) deletionErrors = true;
+                      deletedChecks++;
+                      if (deletedChecks === checksToDelete) {
+                        if (!deletionErrors) {
+                          callback(200);
+                        } else {
+                          callback(500, {
+                            Error:
+                              "Errors encountered while deleting user's check. All checks may not have been deleted"
+                          });
+                        }
+                      }
+                    });
+                  });
+                } else {
+                  callback(200);
+                }
               } else {
-                console.log(err);
                 callback(500, {
                   Error: 'Could not delete user'
                 });
@@ -293,16 +322,16 @@ handlers._tokens = {};
 // Tokens- post
 // Required data: phone, password
 // Optional data: none
-handlers._tokens.post = (data, callback) => {
+handlers._tokens.post = (sentData, callback) => {
   const phone =
-    typeof data.payload.phone === 'string' &&
-    data.payload.phone.trim().length === 10
-      ? data.payload.phone.trim()
+    typeof sentData.payload.phone === 'string' &&
+    sentData.payload.phone.trim().length === 10
+      ? sentData.payload.phone.trim()
       : false;
   const password =
-    typeof data.payload.password === 'string' &&
-    data.payload.password.trim().length > 0
-      ? data.payload.password.trim()
+    typeof sentData.payload.password === 'string' &&
+    sentData.payload.password.trim().length > 0
+      ? sentData.payload.password.trim()
       : false;
   if (phone && password) {
     // Lookup the user with that phone number
@@ -461,6 +490,355 @@ handlers._tokens.verifyToken = (id, phone, callback) => {
       callback(false);
     }
   });
+};
+
+// Checks
+handlers.checks = (data, callback) => {
+  const acceptableMethods = ['post', 'get', 'put', 'delete'];
+  if (acceptableMethods.indexOf(data.method) > -1) {
+    handlers._checks[data.method](data, callback);
+  } else {
+    callback(405);
+  }
+};
+
+// Container for all the checks methods
+handlers._checks = {};
+
+// Checks - post
+// Required data: protocol, url, method, successCodes, timeoutSeconds
+// Optional data: none
+handlers._checks.post = (sentData, callback) => {
+  const protocol =
+    typeof sentData.payload.protocol === 'string' &&
+    ['https', 'http'].indexOf(sentData.payload.protocol) > -1
+      ? sentData.payload.protocol
+      : false;
+  const url =
+    typeof sentData.payload.url === 'string' &&
+    sentData.payload.url.trim().length > 0
+      ? sentData.payload.url.trim()
+      : false;
+  const method =
+    typeof sentData.payload.method === 'string' &&
+    ['post', 'get', 'put', 'delete'].indexOf(sentData.payload.method) > -1
+      ? sentData.payload.method
+      : false;
+  const successCodes =
+    typeof sentData.payload.successCodes === 'object' &&
+    sentData.payload.successCodes instanceof Array &&
+    sentData.payload.successCodes.length > 0
+      ? sentData.payload.successCodes
+      : false;
+  const timeoutSeconds =
+    typeof sentData.payload.timeoutSeconds === 'number' &&
+    sentData.payload.timeoutSeconds % 1 === 0 &&
+    sentData.payload.timeoutSeconds >= 1 &&
+    sentData.payload.timeoutSeconds <= 5
+      ? sentData.payload.timeoutSeconds
+      : false;
+
+  if (protocol && url && method && successCodes && timeoutSeconds) {
+    // Get token from headers
+    const token =
+      typeof sentData.headers.token === 'string'
+        ? sentData.headers.token
+        : false;
+
+    // Look up user by reading the token
+    _data.read('tokens', token, (err, tokenData) => {
+      if (!err && token) {
+        const userPhone = tokenData.phone;
+        _data.read('users', userPhone, (err, userData) => {
+          if (!err && userData) {
+            const userChecks =
+              typeof userData.checks === 'object' &&
+              userData.checks instanceof Array
+                ? userData.checks
+                : [];
+
+            // Verify that user has less not the maxChecks per user
+            if (userChecks.length < config.maxChecks) {
+              // Create a random ID for the check
+              const checkId = helpers.createRandomString(20);
+
+              // Create the check object and include user's phone
+              const checkObject = {
+                id: checkId,
+                userPhone,
+                protocol,
+                url,
+                method,
+                successCodes,
+                timeoutSeconds
+              };
+
+              _data.create('checks', checkId, checkObject, (err) => {
+                if (!err) {
+                  // Add the checkId to the user's object
+                  userData.checks = userChecks;
+                  userData.checks.push(checkId);
+
+                  // Save the new user data
+                  _data.update('users', userPhone, userData, (err) => {
+                    if (!err) {
+                      // Return the data about the new check
+                      callback(200, checkObject);
+                    } else {
+                      callback(500, {
+                        Error: 'Could not update the user with the new check'
+                      });
+                    }
+                  });
+                } else {
+                  callback(500, { Error: 'Could not create the new check' });
+                }
+              });
+            } else {
+              callback(400, {
+                Error: `User already has the maximum number of checkd (${
+                  config.maxChecks
+                })`
+              });
+            }
+          } else {
+            callback(403);
+          }
+        });
+      } else {
+        callback(403);
+      }
+    });
+  } else {
+    callback(400, { Error: 'Missing required inputs or inputs are invalid' });
+  }
+};
+
+// Checks - get
+// Required data: id
+// Optinal data: none
+handlers._checks.get = (sentData, callback) => {
+  // Check that the id provided is valid
+  const id =
+    typeof sentData.queryStringObject.id === 'string' &&
+    sentData.queryStringObject.id.trim().length === 20
+      ? sentData.queryStringObject.id.trim()
+      : false;
+
+  if (id) {
+    // Lookup the checks
+    _data.read('checks', id, (err, checkData) => {
+      if (!err && checkData) {
+        // Get token from the headers
+        const token =
+          typeof sentData.headers.token === 'string'
+            ? sentData.headers.token
+            : false;
+
+        // Verify token is valid for the given user phone number
+        handlers._tokens.verifyToken(
+          token,
+          checkData.userPhone,
+          (tokenIsValid) => {
+            if (tokenIsValid) {
+              // Return the check data
+              callback(200, checkData);
+            } else {
+              callback(403);
+            }
+          }
+        );
+      } else {
+        callback(404);
+      }
+    });
+  } else {
+    callback(400, {
+      Error: 'Missing required field'
+    });
+  }
+};
+
+// Checks - put
+// Required data: id
+// Optional data: protocol, url, method, successCodes, timeoutSeconds
+// NOTE <=====> [one of the above optional data must be set]
+handlers._checks.put = (sentData, callback) => {
+  // Check for the required field
+  const id =
+    typeof sentData.payload.id === 'string' &&
+    sentData.payload.id.trim().length === 20
+      ? sentData.payload.id.trim()
+      : false;
+
+  // Check for optional fields
+  const protocol =
+    typeof sentData.payload.protocol === 'string' &&
+    ['https', 'http'].indexOf(sentData.payload.protocol) > -1
+      ? sentData.payload.protocol
+      : false;
+  const url =
+    typeof sentData.payload.url === 'string' &&
+    sentData.payload.url.trim().length > 0
+      ? sentData.payload.url.trim()
+      : false;
+  const method =
+    typeof sentData.payload.method === 'string' &&
+    ['post', 'get', 'put', 'delete'].indexOf(sentData.payload.method) > -1
+      ? sentData.payload.method
+      : false;
+  const successCodes =
+    typeof sentData.payload.successCodes === 'object' &&
+    sentData.payload.successCodes instanceof Array &&
+    sentData.payload.successCodes.length > 0
+      ? sentData.payload.successCodes
+      : false;
+  const timeoutSeconds =
+    typeof sentData.payload.timeoutSeconds === 'number' &&
+    sentData.payload.timeoutSeconds % 1 === 0 &&
+    sentData.payload.timeoutSeconds >= 1 &&
+    sentData.payload.timeoutSeconds <= 5
+      ? sentData.payload.timeoutSeconds
+      : false;
+
+  if (id) {
+    // Check for one or more optional fields
+    if (protocol || url || method || successCodes || timeoutSeconds) {
+      // Lookup the checks
+      _data.read('checks', id, (err, checkData) => {
+        if (!err && checkData) {
+          // Get token from the headers
+          const token =
+            typeof sentData.headers.token === 'string'
+              ? sentData.headers.token
+              : false;
+
+          // Verify token is valid for the given user phone number
+          handlers._tokens.verifyToken(
+            token,
+            checkData.userPhone,
+            (tokenIsValid) => {
+              if (tokenIsValid) {
+                // Update the check
+                if (protocol) checkData.protocol = protocol;
+                if (url) checkData.url = url;
+                if (method) checkData.method = method;
+                if (successCodes) checkData.successCodes = successCodes;
+                if (timeoutSeconds) checkData.timeoutSeconds = timeoutSeconds;
+
+                // Save updates
+                _data.update('checks', id, checkData, (err) => {
+                  if (!err) {
+                    callback(200);
+                  } else {
+                    callback(500, { Error: 'Could not update the check' });
+                  }
+                });
+              } else {
+                callback(403);
+              }
+            }
+          );
+        } else {
+          callback(404, { Error: 'Check ID does not exist' });
+        }
+      });
+    } else {
+      callback(400, { Error: 'Missing fields to update' });
+    }
+  } else {
+    callback(400, { Error: 'Missing required field' });
+  }
+};
+
+// Checks - delete
+// Required data: id
+// Optinal data: none
+handlers._checks.delete = (sentData, callback) => {
+  // Check that the id provided is valid
+  const id =
+    typeof sentData.queryStringObject.id === 'string' &&
+    sentData.queryStringObject.id.trim().length === 20
+      ? sentData.queryStringObject.id.trim()
+      : false;
+  if (id) {
+    // Lookup the checks
+    _data.read('checks', id, (err, checkData) => {
+      if (!err && checkData) {
+        // Get token from the headers
+        const token =
+          typeof sentData.headers.token === 'string'
+            ? sentData.headers.token
+            : false;
+
+        // Verify token is valid for the given user phone number
+        handlers._tokens.verifyToken(
+          token,
+          checkData.userPhone,
+          (tokenIsValid) => {
+            if (tokenIsValid) {
+              // Delete the check data
+              _data.delete('checks', id, (err) => {
+                if (!err) {
+                  _data.read('users', checkData.userPhone, (err, userData) => {
+                    if (!err && userData) {
+                      const userChecks =
+                        typeof userData.checks === 'object' &&
+                        userData.checks instanceof Array
+                          ? userData.checks
+                          : [];
+
+                      // Remove the deleted check from the list of checks
+                      const checkPosition = userChecks.indexOf(id);
+                      if (checkPosition > -1) {
+                        userChecks.splice(checkPosition, 1);
+
+                        // Re-save the user's data
+                        _data.update(
+                          'users',
+                          checkData.userPhone,
+                          userData,
+                          (err) => {
+                            if (!err) {
+                              callback(200);
+                            } else {
+                              callback(500, {
+                                Error: 'Could not update the user'
+                              });
+                            }
+                          }
+                        );
+                      } else {
+                        callback(500, {
+                          Error:
+                            'Could not find the check, so could not remove it'
+                        });
+                      }
+                    } else {
+                      callback(500, {
+                        Error:
+                          'Could not find the user who created the check, so could not remove the check from the check data'
+                      });
+                    }
+                  });
+                } else {
+                  callback(500, { Error: 'Could not delete the check data' });
+                }
+              });
+            } else {
+              callback(403);
+            }
+          }
+        );
+      } else {
+        callback(404, { Error: 'Check ID does not exist' });
+      }
+    });
+  } else {
+    callback(400, {
+      Error: 'Missing required field'
+    });
+  }
 };
 
 // Ping handler
