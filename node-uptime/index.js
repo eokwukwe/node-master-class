@@ -5,8 +5,8 @@ const https = require('https');
 const { StringDecoder } = require('string_decoder');
 
 const config = require('./lib/config');
-const handlers = require('./lib/handlers');
 const helpers = require('./lib/helpers');
+const handlers = require('./lib/handlers');
 
 // Instantiate the HTTP server
 const httpServer = http.createServer((req, res) => {
