@@ -24,9 +24,9 @@ lib.create = (dir, fileName, data, callback) => {
         const stringData = JSON.stringify(data);
 
         // Write to file and close it
-        fs.writeFile(fileDescriptor, stringData, err => {
+        fs.writeFile(fileDescriptor, stringData, (err) => {
           if (!err) {
-            fs.close(fileDescriptor, err => {
+            fs.close(fileDescriptor, (err) => {
               if (!err) {
                 callback(false);
               } else {
@@ -72,12 +72,12 @@ lib.update = (dir, fileName, data, callback) => {
         const stringData = JSON.stringify(data);
 
         // Truncate the file
-        fs.ftruncate(fileDescriptor, err => {
+        fs.ftruncate(fileDescriptor, (err) => {
           if (!err) {
             // Write to the file and close it
-            fs.writeFile(fileDescriptor, stringData, err => {
+            fs.writeFile(fileDescriptor, stringData, (err) => {
               if (!err) {
-                fs.close(fileDescriptor, err => {
+                fs.close(fileDescriptor, (err) => {
                   if (!err) {
                     callback(false);
                   } else {
@@ -102,11 +102,26 @@ lib.update = (dir, fileName, data, callback) => {
 // Delete a file
 lib.delete = (dir, fileName, callback) => {
   // Unlink the file
-  fs.unlink(lib.baseDir + dir + '/' + fileName + '.json', err => {
+  fs.unlink(lib.baseDir + dir + '/' + fileName + '.json', (err) => {
     if (!err) {
       callback(false);
     } else {
       callback('Error deleting file');
+    }
+  });
+};
+
+// List all the items in a directory
+lib.list = (dir, callback) => {
+  fs.readdir(`${lib.baseDir}${dir}/`, (err, data) => {
+    if (!err && data && data.length > 0) {
+      let trimmedFileNames = [];
+      data.forEach((fileName) => {
+        trimmedFileNames.push(fileName.replace('.json', ''));
+      });
+      callback(false, trimmedFileNames);
+    } else {
+      callback(err, data);
     }
   });
 };

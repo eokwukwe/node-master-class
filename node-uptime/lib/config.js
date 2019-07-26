@@ -25,7 +25,7 @@ environments.production = {
   httpsPort: 5001,
   envName: 'production',
   hashingSecret: 'thisIsAlsoASecret',
-  maxChecks: 10,
+  maxChecks: 5,
   twilio: {
     accountSid: '',
     authToken: '',
